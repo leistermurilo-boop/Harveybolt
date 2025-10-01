@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase, Case, Document, GeneratedDoc } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { generateDocument } from '../lib/documentGenerator';
-import { ArrowLeft, Upload, FileText, Sparkles, Download } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Sparkles, Download, X } from 'lucide-react';
 
 type CaseDetailProps = {
   caseId: string;
