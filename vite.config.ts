@@ -7,5 +7,5 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
-  base: "/Harveybolt/", // 🔹 troquei para o nome exato do seu repositório
+  base: '/Harveybolt/', // 👈 nome exato do repositório no GitHub
 })
