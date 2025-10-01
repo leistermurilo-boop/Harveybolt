@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase, Case, Document, GeneratedDoc } from '../lib/supabase';
-import { ArrowLeft, Upload, FileText, Sparkles } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { generateDocument } from '../lib/documentGenerator';
+import { ArrowLeft, Upload, FileText, Sparkles, Download } from 'lucide-react';
 
 type CaseDetailProps = {
   caseId: string;
@@ -277,7 +279,12 @@ export default function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                           </p>
                         </div>
                       </div>
-                      <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                      <button
+                        onClick={() => window.open(doc.docx_url, '_blank')}
+                        disabled={!doc.docx_url}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Download className="w-4 h-4" />
                         Baixar DOCX
                       </button>
                     </div>
@@ -311,9 +318,27 @@ type GenerateDocModalProps = {
 };
 
 function GenerateDocModal({ caseId, onClose, onSuccess }: GenerateDocModalProps) {
+  const { company } = useAuth();
   const [docType, setDocType] = useState('');
   const [params, setParams] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [caseData, setCaseData] = useState<Case | null>(null);
+
+  useEffect(() => {
+    loadCase();
+  }, [caseId]);
+
+  const loadCase = async () => {
+    const { data, error } = await supabase
+      .from('cases')
+      .select('*')
+      .eq('id', caseId)
+      .maybeSingle();
+
+    if (!error && data) {
+      setCaseData(data);
+    }
+  };
 
   const docTypes = [
     { value: 'recurso_administrativo', label: 'Recurso Administrativo' },
@@ -325,25 +350,72 @@ function GenerateDocModal({ caseId, onClose, onSuccess }: GenerateDocModalProps)
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!company || !caseData) {
+      alert('Dados da empresa ou caso não encontrados');
+      return;
+    }
+
     setGenerating(true);
 
     try {
-      const mockContent = `DOCUMENTO GERADO POR IA - ${docTypes.find(d => d.value === docType)?.label}\n\nAo Órgão Licitante,\n\nVem a empresa, por meio de seu representante legal, apresentar o presente documento referente ao processo licitatório em questão.\n\n${params}\n\nTermos em que pede deferimento.\n\nRespeitosamente,\n\n[Assinatura]`;
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
-      const { error } = await supabase.from('generated_docs').insert({
-        case_id: caseId,
-        doc_type: docTypes.find(d => d.value === docType)?.label || docType,
-        content: mockContent,
-        parameters: { params },
-        docx_url: '',
+      let logoBlob: Blob | undefined;
+      if (company.logo_url) {
+        try {
+          const response = await fetch(company.logo_url);
+          logoBlob = await response.blob();
+        } catch (error) {
+          console.warn('Failed to fetch logo:', error);
+        }
+      }
+
+      const docBlob = await generateDocument({
+        docType: docType as any,
+        company,
+        caseData,
+        parameters: params,
+        logoBlob,
       });
 
-      if (error) throw error;
+      const fileName = `${Date.now()}.docx`;
+      const filePath = `generated/${caseId}/${fileName}`;
 
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, docBlob, {
+          contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw new Error(`Erro ao fazer upload: ${uploadError.message}`);
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
+
+      const docLabel = docTypes.find(d => d.value === docType)?.label || docType;
+      const { error: insertError } = await supabase.from('generated_docs').insert({
+        case_id: caseId,
+        doc_type: docLabel,
+        content: 'Documento DOCX gerado com sucesso',
+        parameters: { params, docType },
+        docx_url: publicUrl,
+      });
+
+      if (insertError) {
+        console.error('Database insert error:', insertError);
+        throw new Error(`Erro ao salvar no banco: ${insertError.message}`);
+      }
+
+      alert('Documento gerado com sucesso!');
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Generate error:', error);
-      alert('Erro ao gerar documento');
+      alert(error.message || 'Erro ao gerar documento');
     } finally {
       setGenerating(false);
     }
@@ -404,7 +476,7 @@ function GenerateDocModal({ caseId, onClose, onSuccess }: GenerateDocModalProps)
               disabled={generating}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {generating ? 'Gerando...' : 'Gerar Documento'}
+              {generating ? 'Gerando documento (3-5s)...' : 'Gerar Documento'}
             </button>
           </div>
         </form>
