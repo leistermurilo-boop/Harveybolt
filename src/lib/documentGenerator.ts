@@ -3,7 +3,6 @@ import {
   Paragraph,
   TextRun,
   AlignmentType,
-  HeadingLevel,
   BorderStyle,
   convertInchesToTwip,
   ImageRun,
@@ -25,16 +24,6 @@ type GenerateDocParams = {
   logoBlob?: Blob;
 };
 
-const getDocTypeTitle = (docType: DocType): string => {
-  const titles: Record<DocType, string> = {
-    recurso_administrativo: 'RECURSO ADMINISTRATIVO',
-    contrarrazoes: 'CONTRARRAZÕES AO RECURSO ADMINISTRATIVO',
-    substituicao_marca: 'SOLICITAÇÃO DE SUBSTITUIÇÃO DE MARCA',
-    prorrogacao_prazo: 'SOLICITAÇÃO DE PRORROGAÇÃO DE PRAZO',
-    defesa_notificacao: 'DEFESA CONTRA NOTIFICAÇÃO',
-  };
-  return titles[docType];
-};
 
 const getDocumentContent = (
   docType: DocType,
@@ -42,11 +31,6 @@ const getDocumentContent = (
   caseData: Case,
   parameters?: string
 ): { title: string; sections: Array<{ heading: string; content: string[] }> } => {
-  const today = new Date().toLocaleDateString('pt-BR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
 
   const baseIntro = `${company.name}, inscrita no CNPJ sob o nº ${company.cnpj}, com endereço ${
     company.address || 'conforme cadastro'
@@ -253,15 +237,20 @@ export async function generateDocument(params: GenerateDocParams): Promise<Blob>
   if (logoBlob) {
     try {
       const arrayBuffer = await logoBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+
+      const imageType = logoBlob.type.includes('png') ? 'image/png' : 'image/jpeg';
+
       children.push(
         new Paragraph({
           children: [
             new ImageRun({
-              data: arrayBuffer,
+              data: uint8Array,
               transformation: {
                 width: 100,
                 height: 100,
               },
+              type: imageType === 'image/png' ? 'png' : 'jpg',
             }),
           ],
           alignment: AlignmentType.CENTER,

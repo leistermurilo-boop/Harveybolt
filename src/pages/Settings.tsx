@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { uploadLogo } from '../lib/uploadService';
 import { Upload, Building } from 'lucide-react';
 
 export default function Settings() {
@@ -33,41 +34,19 @@ export default function Settings() {
 
     setUploading(true);
     setError('');
+    setSuccess('');
 
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `logos/${company.id}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('logos')
-        .upload(fileName, file, { upsert: true });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        throw new Error(`Erro no upload: ${uploadError.message}`);
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('logos')
-        .getPublicUrl(fileName);
-
-      const { error: updateError } = await supabase
-        .from('companies')
-        .update({ logo_url: publicUrl })
-        .eq('id', company.id);
-
-      if (updateError) {
-        console.error('Database update error:', updateError);
-        throw new Error(`Erro ao atualizar banco: ${updateError.message}`);
-      }
-
-      setLogoUrl(publicUrl);
+      const result = await uploadLogo({ file, companyId: company.id });
+      setLogoUrl(result.publicUrl);
       await refreshCompany();
       setSuccess('Logo atualizado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
+      e.target.value = '';
     } catch (err: any) {
-      console.error('Full error:', err);
+      console.error('Upload logo error:', err);
       setError(err.message || 'Erro ao fazer upload do logo');
+      setTimeout(() => setError(''), 5000);
     } finally {
       setUploading(false);
     }
@@ -128,7 +107,7 @@ export default function Settings() {
               <input
                 type="file"
                 className="hidden"
-                accept="image/png,image/jpeg,image/jpg"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
                 onChange={handleLogoUpload}
                 disabled={uploading}
               />

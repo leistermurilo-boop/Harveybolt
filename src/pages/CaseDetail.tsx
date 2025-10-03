@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase, Case, Document, GeneratedDoc } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { generateDocument } from '../lib/documentGenerator';
-import { ArrowLeft, Upload, FileText, Sparkles, Download, X } from 'lucide-react';
+import { uploadDocument } from '../lib/uploadService';
+import { ArrowLeft, Upload, FileText, Sparkles, Download, X, AlertCircle } from 'lucide-react';
 
 type CaseDetailProps = {
   caseId: string;
@@ -18,6 +19,7 @@ export default function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const [activeTab, setActiveTab] = useState<Tab>('documents');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
 
   useEffect(() => {
@@ -68,37 +70,15 @@ export default function CaseDetail({ caseId, onBack }: CaseDetailProps) {
     if (!file) return;
 
     setUploading(true);
+    setUploadError(null);
+
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${caseId}/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, file);
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        throw new Error(`Erro no upload: ${uploadError.message}`);
-      }
-
-      const { error: insertError } = await supabase.from('documents').insert({
-        case_id: caseId,
-        filename: file.name,
-        type,
-        storage_path: fileName,
-        file_size: file.size,
-      });
-
-      if (insertError) {
-        console.error('Database insert error:', insertError);
-        throw new Error(`Erro ao salvar no banco: ${insertError.message}`);
-      }
-
+      await uploadDocument({ file, caseId, type });
       await loadDocuments();
-      alert('Arquivo enviado com sucesso!');
+      e.target.value = '';
     } catch (error: any) {
-      console.error('Full upload error:', error);
-      alert(error.message || 'Erro ao fazer upload do arquivo');
+      console.error('Upload error:', error);
+      setUploadError(error.message || 'Erro ao fazer upload do arquivo');
     } finally {
       setUploading(false);
     }
@@ -189,6 +169,13 @@ export default function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                   Gerar Documento
                 </button>
               </div>
+
+              {uploadError && (
+                <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <p className="text-sm">{uploadError}</p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {['edital', 'recurso_concorrente', 'outros'].map((type) => (
